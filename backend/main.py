@@ -1,14 +1,19 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import engine, Base, AsyncSessionLocal
 from models import User, Room, Session, DistractionEvent
 from models import Session as FocusSession
-from routers import users, rooms
+from routers import users, rooms, auth
 from routers.websocket import manager
 from sqlalchemy import select
+from jose import jwt, JWTError
 import json
+import os
 from datetime import datetime
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
 
 
 @asynccontextmanager
@@ -30,6 +35,7 @@ app.add_middleware(
 
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 
 @app.get("/")
@@ -37,17 +43,19 @@ async def root():
     return {"status": "Focus Rooms API is running"}
 
 
-@app.websocket("/ws/{room_id}/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
-    print(f"WebSocket connection attempt: room={room_id} user={user_id}")
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if not user:
-            await websocket.close(code=4001)
-            return
-        display_name = user.display_name
+@app.websocket("/ws/{room_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str, token: str = Query(...)):
+    # Verify JWT
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload["sub"]
+        display_name = payload["display_name"]
+    except JWTError:
+        await websocket.close(code=4001)
+        return
 
+    # Create a focus session in the DB
+    async with AsyncSessionLocal() as db:
         focus_session = FocusSession(user_id=user_id, room_id=room_id)
         db.add(focus_session)
         await db.commit()

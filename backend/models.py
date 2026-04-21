@@ -5,25 +5,31 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from database import Base
 
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    google_id = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=False)
     display_name = Column(String, nullable=False)
+    picture = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     sessions = relationship("Session", back_populates="user")
-
 
 class Room(Base):
     __tablename__ = "rooms"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    scheduled_start = Column(DateTime, nullable=False)
+    name = Column(String, nullable=False)
+    is_private = Column(Boolean, default=False)
+    invite_code = Column(String, unique=True, nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    scheduled_start = Column(DateTime, default=datetime.utcnow)
     duration_minutes = Column(Integer, default=45)
 
     sessions = relationship("Session", back_populates="room")
-
 
 class Session(Base):
     __tablename__ = "sessions"

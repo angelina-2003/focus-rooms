@@ -117,19 +117,25 @@ function Room() {
   const [participants, setParticipants] = useState([])
   const [feed, setFeed] = useState([])
   const [timeLeft, setTimeLeft] = useState(null)
+  const [roomName, setRoomName] = useState('')
   const [stats, setStats] = useState({})
   const ws = useRef(null)
   const feedEndRef = useRef(null)
 
-  const userId = sessionStorage.getItem('userId')
-  const displayName = sessionStorage.getItem('displayName')
+  const token = sessionStorage.getItem('token')
+  const decoded = token ? JSON.parse(atob(token.split('.')[1])) : null
+  const userId = decoded?.sub
+  const displayName = decoded?.display_name
 
   useEffect(() => {
     fetch(`${API}/rooms/active`)
       .then(res => res.json())
       .then(data => {
         const room = data.find(r => String(r.id) === String(roomId))
-        if (room) setTimeLeft(Math.floor(room.remaining_seconds))
+        if (room) {
+          setTimeLeft(Math.floor(room.remaining_seconds))
+          setRoomName(room.name ?? `Room #${roomId}`)
+        }
       })
       .catch(() => {})
   }, [roomId])
@@ -142,12 +148,12 @@ function Room() {
   }, [timeLeft === null])
 
   useEffect(() => {
-    if (!userId) {
+    if (!token) {
       navigate('/')
       return
     }
 
-    ws.current = new WebSocket(`ws://localhost:8000/ws/${roomId}/${userId}`)
+    ws.current = new WebSocket(`ws://localhost:8000/ws/${roomId}?token=${token}`)
 
     ws.current.onmessage = (event) => {
       const msg = JSON.parse(event.data)
@@ -205,7 +211,7 @@ function Room() {
       ws.current?.close()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [roomId, userId, navigate])
+  }, [roomId, token, navigate])
 
   useEffect(() => {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -221,7 +227,7 @@ function Room() {
             </svg>
           </button>
           <div className="room-title">
-            <span className="room-title-text">Room #{roomId}</span>
+            <span className="room-title-text">{roomName || `Room #${roomId}`}</span>
             <div className="live-badge">
               <span className="live-dot" />
               Live
@@ -254,7 +260,7 @@ function Room() {
             {participants.map((p, i) => (
               <div
                 key={p.user_id}
-                className={`participant${p.user_id === parseInt(userId) ? ' is-you' : ''}`}
+                className={`participant${p.user_id === userId ? ' is-you' : ''}`}
                 style={{ animationDelay: `${i * 0.04}s` }}
               >
                 <div className="avatar" style={{ background: avatarColor(p.display_name) }}>
@@ -264,7 +270,7 @@ function Room() {
                 <div className="participant-info">
                   <span className="participant-name">
                     {p.display_name}
-                    {p.user_id === parseInt(userId) && (
+                    {p.user_id === userId && (
                       <span className="you-tag">you</span>
                     )}
                   </span>
