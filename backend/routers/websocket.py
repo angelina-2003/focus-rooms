@@ -11,15 +11,19 @@ class ConnectionManager:
     def __init__(self):
         self.rooms: dict[str, list[dict]] = {}
 
-    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, display_name: str):
+    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, display_name: str) -> bool:
         await websocket.accept()
         if room_id not in self.rooms:
             self.rooms[room_id] = []
+        # If this user already has a stale connection, remove it and treat as reconnect
+        was_connected = any(c["user_id"] == user_id for c in self.rooms[room_id])
+        self.rooms[room_id] = [c for c in self.rooms[room_id] if c["user_id"] != user_id]
         self.rooms[room_id].append({
             "websocket": websocket,
             "user_id": user_id,
             "display_name": display_name,
         })
+        return not was_connected  # True = fresh join, False = reconnect
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.rooms:
@@ -35,7 +39,11 @@ class ConnectionManager:
 
     async def broadcast(self, room_id: str, message: dict):
         for connection in self.rooms.get(room_id, []):
-            await connection["websocket"].send_text(json.dumps(message))
+            try:
+                await connection["websocket"].send_text(json.dumps(message))
+            except Exception:
+                pass
+
 
 manager = ConnectionManager()
 
@@ -56,12 +64,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
         await db.refresh(focus_session)
         session_id = str(focus_session.id)
 
-    await manager.connect(websocket, room_id, user_id, display_name)
-    await manager.broadcast(room_id, {
-        "type": "user_joined",
-        "display_name": display_name,
-        "participants": manager.get_participants(room_id),
-    })
+    is_new_join = await manager.connect(websocket, room_id, user_id, display_name)
+
+    if is_new_join:
+        await manager.broadcast(room_id, {
+            "type": "user_joined",
+            "display_name": display_name,
+            "participants": manager.get_participants(room_id),
+        })
 
     try:
         while True:
