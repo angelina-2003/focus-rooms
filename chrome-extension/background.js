@@ -1,6 +1,6 @@
 console.log('[FocusRooms] background service worker started')
 
-const API = 'http://localhost:8000'
+const API = 'https://focus-rooms.onrender.com'
 
 let tabStartTime = null
 let currentDomain = null

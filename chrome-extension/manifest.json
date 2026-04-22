@@ -11,12 +11,12 @@
   ],
 
   "host_permissions": [
-    "http://localhost:8000/*"
+    "https://focus-rooms.onrender.com/*"
   ],
 
   "content_scripts": [
     {
-      "matches": ["http://localhost:5173/*"],
+      "matches": ["https://focusonit.online/*"],
       "js": ["content.js"]
     }
   ],

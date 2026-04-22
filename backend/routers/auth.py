@@ -14,12 +14,13 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = "https://focusonit.online"
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
-REDIRECT_URI = "http://localhost:8000/auth/google/callback"
+REDIRECT_URI = "https://focus-rooms.onrender.com/auth/google/callback"
+
 
 
 def create_jwt(user_id: str, display_name: str) -> str:

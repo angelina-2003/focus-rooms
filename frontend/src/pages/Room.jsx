@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import WinsModal from '../components/WinsModal.jsx'
 
-const API = 'http://localhost:8000'
+const API = 'https://focus-rooms.onrender.com'
 
 function formatCountdown(seconds) {
   if (seconds === null) return '--:--'
@@ -329,7 +329,7 @@ function Room() {
     }
     window.addEventListener('message', onExtensionReply)
 
-    ws.current = new WebSocket(`ws://localhost:8000/ws/${roomId}?token=${token}`)
+    ws.current = new WebSocket(`wss://focus-rooms.onrender.com/ws/${roomId}?token=${token}`)
 
     ws.current.onmessage = (event) => {
       const msg = JSON.parse(event.data)

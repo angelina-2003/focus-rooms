@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import WinsModal from '../components/WinsModal.jsx'
 import WhitelistModal from '../components/WhitelistModal.jsx'
 
-const API = 'http://localhost:8000'
+const API = 'https://focus-rooms.onrender.com'
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60)

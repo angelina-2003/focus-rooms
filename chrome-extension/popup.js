@@ -1,5 +1,5 @@
-const API = 'http://localhost:8000'
-const APP = 'http://localhost:5173'
+const API = 'https://focus-rooms.onrender.com'
+const APP = 'https://focusonit.online'
 const SESSION_KEYS = ['token', 'roomId', 'roomName', 'sessionEnd', 'totalDuration', 'distractionCount', 'lastSite']
 const ALL_KEYS = ['authToken', 'lastEndedRoomId', 'lastEndedAt', ...SESSION_KEYS]
 

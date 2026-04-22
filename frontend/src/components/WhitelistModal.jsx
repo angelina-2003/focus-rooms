@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-const API = 'http://localhost:8000'
+const API = 'https://focus-rooms.onrender.com'
 
 function normaliseDomain(raw) {
   return raw.trim().toLowerCase()
