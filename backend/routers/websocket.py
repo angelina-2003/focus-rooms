@@ -38,10 +38,14 @@ class ConnectionManager:
         ]
 
     async def broadcast(self, room_id: str, message: dict):
-        for connection in self.rooms.get(room_id, []):
+        connections = self.rooms.get(room_id, [])
+        print(f"[BROADCAST] room={room_id} — {len(connections)} connection(s)")  # ADD
+        for connection in connections:
             try:
                 await connection["websocket"].send_text(json.dumps(message))
-            except Exception:
+                print(f"[BROADCAST] sent to {connection['display_name']} ✓")      # ADD
+            except Exception as e:
+                print(f"[BROADCAST] FAILED for {connection['display_name']}: {e}") # ADD
                 pass
 
 

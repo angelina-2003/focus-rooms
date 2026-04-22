@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import WinsModal from '../components/WinsModal.jsx'
 
 const API = 'http://localhost:8000'
 
@@ -21,7 +22,7 @@ function CreateRoomModal({ onClose, onCreated }) {
     setLoading(true)
     setError(null)
     try {
-      const token = localStorage.getItem('token')
+      const token = sessionStorage.getItem('token')
       const decoded = token ? JSON.parse(atob(token.split('.')[1])) : null
       const res = await fetch(`${API}/rooms/`, {
         method: 'POST',
@@ -138,6 +139,10 @@ function InviteCodeModal({ room, onClose, onJoin }) {
   )
 }
 
+function getWins(name) {
+  try { return JSON.parse(localStorage.getItem('fr_wins') ?? '{}')[name] ?? 0 } catch { return 0 }
+}
+
 function Home() {
   const [rooms, setRooms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -146,15 +151,18 @@ function Home() {
   const [createdRoom, setCreatedRoom] = useState(null)
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState(null)
+  const [showWins, setShowWins] = useState(false)
   const navigate = useNavigate()
 
-  const token = localStorage.getItem('token')
+  const token = sessionStorage.getItem('token')
+  const decoded = token ? JSON.parse(atob(token.split('.')[1])) : null
+  const displayName = decoded?.display_name
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const urlToken = params.get('token')
     if (urlToken) {
-      localStorage.setItem('token', urlToken)
+      sessionStorage.setItem('token', urlToken)
       window.history.replaceState({}, '', '/')
       window.location.reload()
       return
@@ -177,7 +185,6 @@ function Home() {
   async function joinRoom(room) {
     if (joining !== null) return
     setJoining(room.id)
-    sessionStorage.setItem('token', token)
     navigate(`/room/${room.id}`)
   }
 
@@ -191,11 +198,16 @@ function Home() {
         return
       }
       const room = await res.json()
-      sessionStorage.setItem('token', token)
       navigate(`/room/${room.id}`)
     } catch {
       setCodeError('Could not find that room.')
     }
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem('token')
+    localStorage.removeItem('token')
+    window.location.reload()
   }
 
   function handleRoomCreated(room) {
@@ -224,9 +236,17 @@ function Home() {
         </div>
         <div className="header-right">
           {token ? (
-            <div className="live-badge">
-              <span className="live-dot" />
-              Live
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="trophy-count" onClick={() => setShowWins(true)} style={{ cursor: 'pointer' }}>
+                <svg width="20" height="20" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path d="M7 9.5c-2.2 0-4-1.8-4-4V2h8v3.5c0 2.2-1.8 4-4 4z" stroke="var(--yellow)" strokeWidth="1.3" fill="none"/>
+                  <path d="M3 3.5H1.5a1 1 0 0 0 0 2H3M11 3.5h1.5a1 1 0 0 1 0 2H11" stroke="var(--yellow)" strokeWidth="1.3" strokeLinecap="round"/>
+                  <path d="M5 9.5v1.5M9 9.5v1.5M4.5 11h5" stroke="var(--yellow)" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+                {getWins(displayName)}
+              </span>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{displayName}</span>
+              <button className="btn-secondary" onClick={handleLogout}>Sign out</button>
             </div>
           ) : (
             <a href={`${API}/auth/google`} className="google-btn">
@@ -365,6 +385,10 @@ function Home() {
           onClose={() => setShowCreate(false)}
           onCreated={handleRoomCreated}
         />
+      )}
+
+      {showWins && (
+        <WinsModal wins={getWins(displayName)} displayName={displayName} onClose={() => setShowWins(false)} />
       )}
 
       {createdRoom && (

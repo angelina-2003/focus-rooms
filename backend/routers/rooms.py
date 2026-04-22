@@ -1,12 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from datetime import datetime
 from database import get_db
-from models import Room
+from models import Room, DistractionEvent, Session as FocusSession
 from pydantic import BaseModel, Field
+from jose import jwt, JWTError
+from routers.websocket import manager
 import random
 import string
+import os
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
+ALGORITHM = "HS256"
 
 router = APIRouter()
 
@@ -97,5 +104,103 @@ async def get_room_by_code(invite_code: str, db: AsyncSession = Depends(get_db))
         "id": str(room.id),
         "name": room.name,
         "remaining_seconds": remaining,
+        "elapsed_seconds": elapsed,
         "invite_code": room.invite_code,
     }
+
+@router.get("/{room_id}/results")
+async def get_room_results(room_id: str, db: AsyncSession = Depends(get_db)):
+    room_result = await db.execute(select(Room).where(Room.id == room_id))
+    room = room_result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    sessions_result = await db.execute(
+        select(FocusSession)
+        .where(FocusSession.room_id == room_id)
+        .options(
+            selectinload(FocusSession.user),
+            selectinload(FocusSession.distraction_events),
+        )
+    )
+    sessions = sessions_result.scalars().all()
+
+    total_duration = room.duration_minutes * 60
+    now = datetime.utcnow()
+
+    participants = []
+    for s in sessions:
+        distracted = sum(e.duration_seconds or 0 for e in s.distraction_events)
+        time_in_room = min(total_duration, int((now - s.joined_at).total_seconds()))
+        focused = max(0, time_in_room - distracted)
+        pct = round(focused / time_in_room * 100) if time_in_room > 0 else 100
+        participants.append({
+            "display_name": s.user.display_name,
+            "focused_seconds": focused,
+            "distracted_seconds": distracted,
+            "focus_pct": pct,
+        })
+
+    participants.sort(key=lambda p: p["focused_seconds"], reverse=True)
+
+    return {
+        "room_name": room.name,
+        "duration_minutes": room.duration_minutes,
+        "participants": participants,
+    }
+
+
+class DistractionRequest(BaseModel):
+    room_id: str
+    site: str
+    duration_seconds: int
+
+
+@router.post("/distractions")
+async def report_distraction(
+    body: DistractionRequest,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # Pull identity from the JWT — same token the web app uses
+    try:
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload["sub"]
+        display_name = payload["display_name"]
+    except (JWTError, IndexError, KeyError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Find their active session so we can attach the distraction event to it
+    result = await db.execute(
+        select(FocusSession)
+        .where(FocusSession.user_id == user_id)
+        .where(FocusSession.room_id == body.room_id)
+        .where(FocusSession.completed == False)
+        .order_by(FocusSession.joined_at.desc())
+        .limit(1)
+    )
+    session = result.scalar_one_or_none()
+
+    if session:
+        event = DistractionEvent(
+            session_id=str(session.id),
+            site=body.site,
+            duration_seconds=body.duration_seconds,
+            occurred_at=datetime.utcnow(),
+        )
+        db.add(event)
+        await db.commit()
+
+    # Broadcast to everyone in the room — this is what makes it show up in the feed
+    print(f"[DISTRACTION] Broadcasting to room: '{body.room_id}'")          # ADD THIS
+    print(f"[DISTRACTION] Active rooms in manager: {list(manager.rooms.keys())}")  # ADD THIS
+    # Broadcast to everyone in the room — this is what makes it show up in the feed
+    await manager.broadcast(body.room_id, {
+        "type": "distraction",
+        "display_name": display_name,
+        "site": body.site,
+        "duration_seconds": body.duration_seconds,
+    })
+
+    return {"ok": True}

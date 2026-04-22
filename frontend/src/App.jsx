@@ -3,7 +3,7 @@ import Home from './pages/Home.jsx'
 import Room from './pages/Room.jsx'
 
 function ProtectedRoute({ children }) {
-  const token = localStorage.getItem('token')
+  const token = sessionStorage.getItem('token')
   if (!token) return <Navigate to="/" replace />
   return children
 }
