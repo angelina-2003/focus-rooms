@@ -1,22 +1,17 @@
 console.log('[FocusRooms] background service worker started')
 
-// Capture JWT from OAuth callback and from main app login
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.status !== 'complete') return
-  const url = tab.url ?? ''
-  // Matches both http://localhost:5173/?token=... and http://localhost:5173?token=...
-  const match = url.match(/localhost:5173[^?]*\?.*[?&]token=([^&]+)/)
-  if (match) {
-    const token = decodeURIComponent(match[1])
-    chrome.storage.local.set({ authToken: token })
-    console.log('[FocusRooms] auth token captured from tab')
-  }
-})
-
 const API = 'http://localhost:8000'
 
 let tabStartTime = null
 let currentDomain = null
+let whitelistedSites = []
+let lastWhitelistFetch = 0
+
+// Restore persisted whitelist immediately on service worker startup so it's
+// available before the first tab switch (avoids the async-fetch race).
+chrome.storage.local.get('whitelistedSites', ({ whitelistedSites: stored }) => {
+  if (Array.isArray(stored)) whitelistedSites = stored
+})
 
 
 function getDomain(url) {
@@ -33,18 +28,57 @@ function shouldIgnore(domain) {
   if (!domain) return true
   if (domain === 'localhost') return true
   if (domain.includes('focusrooms')) return true
+  if (whitelistedSites.includes(domain)) return true
   return false
 }
 
 
+async function fetchWhitelist(token) {
+  lastWhitelistFetch = Date.now()
+  try {
+    const res = await fetch(`${API}/users/me/whitelist`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      whitelistedSites = data.sites ?? []
+      // Persist so the next service worker restart picks it up immediately
+      chrome.storage.local.set({ whitelistedSites })
+      console.log('[FocusRooms] whitelist loaded:', whitelistedSites)
+    }
+  } catch {
+    // Non-fatal — keep the last known list
+  }
+}
+
+
+// Capture JWT from OAuth callback
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return
+  const url = tab.url ?? ''
+  const match = url.match(/localhost:5173[^?]*\?.*[?&]token=([^&]+)/)
+  if (match) {
+    const token = decodeURIComponent(match[1])
+    chrome.storage.local.set({ authToken: token })
+    console.log('[FocusRooms] auth token captured from tab')
+    fetchWhitelist(token)
+  }
+})
+
+
 async function handleTabSwitch(newUrl) {
-  const { token, roomId } = await chrome.storage.local.get(['token', 'roomId'])
+  const { token, roomId, authToken } = await chrome.storage.local.get(['token', 'roomId', 'authToken'])
 
   if (!token || !roomId) {
-    // No active session — reset state so stale timing doesn't carry over
+    lastWhitelistFetch = 0
     currentDomain = null
     tabStartTime = null
     return
+  }
+
+  // Await the fetch so shouldIgnore() always uses an up-to-date list
+  if (Date.now() - lastWhitelistFetch > 300_000) {
+    await fetchWhitelist(authToken || token)
   }
 
   const newDomain = getDomain(newUrl)
@@ -52,7 +86,6 @@ async function handleTabSwitch(newUrl) {
 
   if (currentDomain && tabStartTime && !shouldIgnore(currentDomain)) {
     const duration = Math.round((now - tabStartTime) / 1000)
-    console.log('[FocusRooms] reporting distraction — site:', currentDomain, 'duration:', duration)
     if (duration > 3) {
       reportDistraction(token, roomId, currentDomain, duration)
     }
@@ -77,7 +110,6 @@ async function reportDistraction(token, roomId, site, duration) {
         duration_seconds: duration,
       }),
     })
-    console.log('[FocusRooms] distraction reported — status:', res.status)
     if (res.ok) {
       const { distractionCount } = await chrome.storage.local.get('distractionCount')
       chrome.storage.local.set({
@@ -92,16 +124,33 @@ async function reportDistraction(token, roomId, site, duration) {
 
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  console.log('[FocusRooms] tab activated', activeInfo.tabId)
   const tab = await chrome.tabs.get(activeInfo.tabId)
-  console.log('[FocusRooms] tab url', tab.url)
   handleTabSwitch(tab.url)
 })
 
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.active) {
-    console.log('[FocusRooms] tab updated', tab.url)
     handleTabSwitch(tab.url)
+  }
+})
+
+let chromeFocusLostAt = null
+
+chrome.windows.onFocusChanged.addListener(async (windowId) => {
+  const { token, roomId } = await chrome.storage.local.get(['token', 'roomId'])
+  if (!token || !roomId) return
+
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    chromeFocusLostAt = Date.now()
+  } else {
+    if (chromeFocusLostAt !== null) {
+      const duration = Math.round((Date.now() - chromeFocusLostAt) / 1000)
+      chromeFocusLostAt = null
+      tabStartTime = Date.now()
+      if (duration > 3) {
+        reportDistraction(token, roomId, 'another app', duration)
+      }
+    }
   }
 })

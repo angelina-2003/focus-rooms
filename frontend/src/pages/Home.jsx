@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import WinsModal from '../components/WinsModal.jsx'
+import WhitelistModal from '../components/WhitelistModal.jsx'
 
 const API = 'http://localhost:8000'
 
@@ -152,6 +153,7 @@ function Home() {
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState(null)
   const [showWins, setShowWins] = useState(false)
+  const [showWhitelist, setShowWhitelist] = useState(false)
   const navigate = useNavigate()
 
   const token = sessionStorage.getItem('token')
@@ -246,6 +248,13 @@ function Home() {
                 {getWins(displayName)}
               </span>
               <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{displayName}</span>
+              <button className="btn-secondary" onClick={() => setShowWhitelist(true)} title="Whitelist sites">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M7 4v3l2 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                Whitelist
+              </button>
               <button className="btn-secondary" onClick={handleLogout}>Sign out</button>
             </div>
           ) : (
@@ -389,6 +398,10 @@ function Home() {
 
       {showWins && (
         <WinsModal wins={getWins(displayName)} displayName={displayName} onClose={() => setShowWins(false)} />
+      )}
+
+      {showWhitelist && (
+        <WhitelistModal onClose={() => setShowWhitelist(false)} />
       )}
 
       {createdRoom && (

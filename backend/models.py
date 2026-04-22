@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Integer, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from database import Base
@@ -15,6 +15,7 @@ class User(Base):
     display_name = Column(String, nullable=False)
     picture = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    whitelisted_sites = Column(JSON, nullable=True, default=list)
 
     sessions = relationship("Session", back_populates="user")
 

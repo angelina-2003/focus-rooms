@@ -6,7 +6,7 @@ from models import User, Room, Session, DistractionEvent
 from models import Session as FocusSession
 from routers import users, rooms, auth
 from routers.websocket import manager
-from sqlalchemy import select
+from sqlalchemy import select, text
 from jose import jwt, JWTError
 import json
 import os
@@ -20,6 +20,10 @@ ALGORITHM = "HS256"
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add columns introduced after initial schema creation
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS whitelisted_sites JSON"
+        ))
     yield
 
 
